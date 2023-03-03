@@ -9,9 +9,10 @@ import torchaudio.transforms as T
 
 import time
 from matplotlib import pyplot as plt
+import mpl_toolkits.axes_grid1
+import pandas as pd
 import numpy as np
 import cv2
-
 
 webrtc_ctx = webrtc_streamer(
         key="speech-to-text",
@@ -21,20 +22,28 @@ webrtc_ctx = webrtc_streamer(
     )
 
 status_indicator = st.empty()
-values = st.slider('Select a range of values',  min_value=0, max_value=1000, step=1, value=(0,200))
+values = st.slider('Select a range of values',  min_value=0, max_value=1000, step=1, value=(0,600))
 
 if "fig" not in st.session_state:
     st.session_state.fig = plt.figure()
 fig = st.session_state.fig
 pitch_indicator = st.pyplot(fig)
 if "pitch" not in st.session_state:
-    st.session_state.pitch = np.empty(1000)
+    st.session_state.pitch = np.zeros(1000)
 pitch = st.session_state.pitch
 if "spec" not in st.session_state:
-    st.session_state.spec = np.empty((128,1000))
+    st.session_state.spec = np.zeros((512,1000))
 spec = st.session_state.spec
 
+pitch_csv = st.download_button(
+    "Download pitch as CSV",
+    data=pd.DataFrame(pitch).to_csv().encode('utf-8'),
+    file_name="pitch.csv",
+    mime='text/csv',
+)
+
 spectrogram = None
+resampler = None
 while True:
     if webrtc_ctx.state.playing:
         try:
@@ -54,7 +63,7 @@ while True:
         audio_chunk = np.sum(audio_chunk, axis=1)/len(audio_frame.layout.channels)
         audio = torch.tensor(np.copy(audio_chunk))[None].cuda()
 
-        tmp,periodicity = torchcrepe.predict(
+        pitch_tmp,periodicity = torchcrepe.predict(
                 audio,
                 audio_frame.sample_rate,
                 hop_length = int(audio_frame.sample_rate / 200.),
@@ -71,33 +80,44 @@ while True:
                 audio_frame.sample_rate,
                 hop_length = int(audio_frame.sample_rate / 200.),
             )
-        tmp = torchcrepe.threshold.At(.21)(tmp, periodicity)
-        tmp = torchcrepe.filter.mean(tmp, win_length = 3)
+        pitch_tmp = torchcrepe.threshold.At(.21)(pitch_tmp, periodicity)
+        pitch_tmp = torchcrepe.filter.mean(pitch_tmp, win_length = 3)
         
-        tmp = tmp.cpu().detach().numpy()[0]
-        f0 = np.zeros_like(tmp)
-        f0[tmp > 0] = tmp[tmp > 0]
+        pitch_tmp = pitch_tmp.cpu().detach().numpy()[0]
+        f0 = np.zeros_like(pitch_tmp)
+        f0[pitch_tmp > 0] = pitch_tmp[pitch_tmp > 0]
         pitch = np.append(pitch,f0)[-1000:]
 
         if spectrogram == None:
-            spectrogram = T.MelSpectrogram(
-                    sample_rate=audio_frame.sample_rate,
+            spectrogram = T.Spectrogram(
+                    n_fft = 512*2,
                 ).cuda()
-        spec_tmp = spectrogram(audio).cpu().detach().numpy()[0]
-        spec_tmp = cv2.resize(spec_tmp, dsize=(tmp.shape[0], 128))
+        if resampler == None:
+            resampler = T.Resample(
+                    audio_frame.sample_rate,
+                    16000,
+                ).cuda()
+        spec_tmp = spectrogram(resampler(audio)).cpu().detach().numpy()[0]
+        spec_tmp = cv2.resize(spec_tmp, dsize=(pitch_tmp.shape[0], 512))
         spec = np.append(spec,spec_tmp,axis=1)[:,-1000:]
-
+        
         fig = plt.figure()
         ax = fig.add_subplot()
-        ax.imshow(cv2.resize(spec, dsize=(1000, values[1]-values[0])))
+        aximg = ax.imshow(
+                cv2.resize(spec[int(values[0]*513/8000):int(values[1]*513/8000),:],
+                dsize=(1000, values[1]-values[0])),
+                vmin=0, vmax=100,
+            )
         ax.set_ylim(values[0], values[1])
         ax.plot(pitch)
+        divider = mpl_toolkits.axes_grid1.make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.1)
+        fig.colorbar(aximg, cax=cax)
         pitch_indicator.pyplot(fig)
-        
+
         st.session_state.pitch = pitch
         st.session_state.spec = spec
-        st.session_state.fig = fig
-    
+        st.session_state.fig = fig    
     else:
         status_indicator.write("AudioReciver is not set. Abort.")
         break
