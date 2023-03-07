@@ -21,6 +21,10 @@ webrtc_ctx = webrtc_streamer(
         media_stream_constraints={"video": False, "audio": True},
     )
 
+N_FFT = 1024
+RESAMPLE_RATE = 16000
+PLOT_LENGTH = 1000
+
 status_indicator = st.empty()
 values = st.slider('Select a range of values',  min_value=0, max_value=1000, step=1, value=(0,600))
 
@@ -29,10 +33,10 @@ if "fig" not in st.session_state:
 fig = st.session_state.fig
 pitch_indicator = st.pyplot(fig)
 if "pitch" not in st.session_state:
-    st.session_state.pitch = np.zeros(1000)
+    st.session_state.pitch = np.zeros(PLOT_LENGTH)
 pitch = st.session_state.pitch
 if "spec" not in st.session_state:
-    st.session_state.spec = np.zeros((512,1000))
+    st.session_state.spec = np.zeros((N_FFT//2 + 1,PLOT_LENGTH))
 spec = st.session_state.spec
 
 pitch_csv = st.download_button(
@@ -86,26 +90,26 @@ while True:
         pitch_tmp = pitch_tmp.cpu().detach().numpy()[0]
         f0 = np.zeros_like(pitch_tmp)
         f0[pitch_tmp > 0] = pitch_tmp[pitch_tmp > 0]
-        pitch = np.append(pitch,f0)[-1000:]
+        pitch = np.append(pitch,f0)[-PLOT_LENGTH:]
 
         if spectrogram == None:
             spectrogram = T.Spectrogram(
-                    n_fft = 512*2,
+                    n_fft = N_FFT,
                 ).cuda()
         if resampler == None:
             resampler = T.Resample(
                     audio_frame.sample_rate,
-                    16000,
+                    RESAMPLE_RATE,
                 ).cuda()
         spec_tmp = spectrogram(resampler(audio)).cpu().detach().numpy()[0]
-        spec_tmp = cv2.resize(spec_tmp, dsize=(pitch_tmp.shape[0], 512))
-        spec = np.append(spec,spec_tmp,axis=1)[:,-1000:]
+        spec_tmp = cv2.resize(spec_tmp, dsize=(pitch_tmp.shape[0], N_FFT//2 + 1))
+        spec = np.append(spec,spec_tmp,axis=1)[:,-PLOT_LENGTH:]
         
         fig = plt.figure()
         ax = fig.add_subplot()
         aximg = ax.imshow(
-                cv2.resize(spec[int(values[0]*513/8000):int(values[1]*513/8000),:],
-                dsize=(1000, values[1]-values[0])),
+                cv2.resize(spec[0:int(values[1]*(N_FFT//2 + 1)/(RESAMPLE_RATE//2)),:],
+                dsize=(PLOT_LENGTH, values[1])),
                 vmin=0, vmax=100,
             )
         ax.set_ylim(values[0], values[1])
