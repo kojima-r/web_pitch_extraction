@@ -1,7 +1,7 @@
 
 streamlit-elements==0.1.0
 streamlit-webrtc==0.44.2
-torch==1.12.1+cu116
-torchvision==0.13.1+cu116
-torchaudio==0.12.1+cu116
+torch==1.12.1
+torchvision==0.13.1
+torchaudio==0.12.1
 torchcrepe==0.0.17
