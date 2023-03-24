@@ -1,4 +1,4 @@
-
+streamlit==1.17.0
 streamlit-elements==0.1.0
 streamlit-webrtc==0.44.2
 torch==1.12.1
