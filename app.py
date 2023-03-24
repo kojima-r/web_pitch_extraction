@@ -7,6 +7,7 @@ import torch
 import torchcrepe
 import torchaudio.transforms as T
 
+import librosa
 import time
 from matplotlib import pyplot as plt
 import mpl_toolkits.axes_grid1
@@ -26,6 +27,10 @@ RESAMPLE_RATE = 16000
 PLOT_LENGTH = 1000
 
 status_indicator = st.empty()
+
+option = st.selectbox(
+    'Select a Pitch Extraction Model',
+     ('torchcrepe', 'librosa.pyin'))
 values = st.slider('Select a range of values',  min_value=0, max_value=1000, step=1, value=(0,600))
 
 if "fig" not in st.session_state:
@@ -48,6 +53,8 @@ pitch_csv = st.download_button(
 
 spectrogram = None
 resampler = None
+
+device = torch.device('cuda:0' if torch.cuda.is_available() and False else 'cpu')
 while True:
     if webrtc_ctx.state.playing:
         try:
@@ -65,29 +72,36 @@ while True:
         audio_chunk = audio_chunk.astype(np.float32) / np.iinfo(np.int16).max
         audio_chunk = audio_chunk.reshape(-1,len(audio_frame.layout.channels))
         audio_chunk = np.sum(audio_chunk, axis=1)/len(audio_frame.layout.channels)
-        audio = torch.tensor(np.copy(audio_chunk))[None].cuda()
+        audio = torch.tensor(np.copy(audio_chunk))[None].to(device)
 
-        pitch_tmp,periodicity = torchcrepe.predict(
-                audio,
-                audio_frame.sample_rate,
-                hop_length = int(audio_frame.sample_rate / 200.),
-                fmin = 50,
-                fmax = 1000,
-                model = 'tiny',
-                device = 'cuda:0',
-                return_periodicity = True,
-            )
-        periodicity = torchcrepe.filter.median(periodicity, win_length = 3)
-        periodicity = torchcrepe.threshold.Silence(-60.)(
-                periodicity,
-                audio,
-                audio_frame.sample_rate,
-                hop_length = int(audio_frame.sample_rate / 200.),
-            )
-        pitch_tmp = torchcrepe.threshold.At(.21)(pitch_tmp, periodicity)
-        pitch_tmp = torchcrepe.filter.mean(pitch_tmp, win_length = 3)
-        
-        pitch_tmp = pitch_tmp.cpu().detach().numpy()[0]
+        if option == 'torchcrepe':
+            pitch_tmp,periodicity = torchcrepe.predict(
+                    audio,
+                    audio_frame.sample_rate,
+                    hop_length = int(audio_frame.sample_rate / 200.),
+                    fmin = 50,
+                    fmax = 1000,
+                    model = 'tiny',
+                    device = device,
+                    return_periodicity = True,
+                )
+            periodicity = torchcrepe.filter.median(periodicity, win_length = 3)
+            periodicity = torchcrepe.threshold.Silence(-60.)(
+                    periodicity,
+                    audio,
+                    audio_frame.sample_rate,
+                    hop_length = int(audio_frame.sample_rate / 200.),
+                )
+            pitch_tmp = torchcrepe.threshold.At(.21)(pitch_tmp, periodicity)
+            pitch_tmp = torchcrepe.filter.mean(pitch_tmp, win_length = 3)
+            pitch_tmp = pitch_tmp.cpu().detach().numpy()[0]
+        else:
+            pitch_tmp = librosa.pyin(
+                    audio_chunk,
+                    sr = audio_frame.sample_rate,
+                    fmin = 50,
+                    fmax = 1000,
+                )[0]
         f0 = np.zeros_like(pitch_tmp)
         f0[pitch_tmp > 0] = pitch_tmp[pitch_tmp > 0]
         pitch = np.append(pitch,f0)[-PLOT_LENGTH:]
@@ -95,12 +109,12 @@ while True:
         if spectrogram == None:
             spectrogram = T.Spectrogram(
                     n_fft = N_FFT,
-                ).cuda()
+                ).to(device)
         if resampler == None:
             resampler = T.Resample(
                     audio_frame.sample_rate,
                     RESAMPLE_RATE,
-                ).cuda()
+                ).to(device)
         spec_tmp = spectrogram(resampler(audio)).cpu().detach().numpy()[0]
         spec_tmp = cv2.resize(spec_tmp, dsize=(pitch_tmp.shape[0], N_FFT//2 + 1))
         spec = np.append(spec,spec_tmp,axis=1)[:,-PLOT_LENGTH:]
