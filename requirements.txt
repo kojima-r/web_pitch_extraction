@@ -1,6 +1,9 @@
 streamlit==1.17.0
 streamlit-elements==0.1.0
 streamlit-webrtc==0.44.2
+librosa==0.9.1
+matplotlib==3.6.3
+numpy==1.23.5
 torch==1.12.1
 torchvision==0.13.1
 torchaudio==0.12.1
