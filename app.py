@@ -20,7 +20,7 @@ webrtc_ctx = webrtc_streamer(
         key="speech-to-text",
         mode=WebRtcMode.SENDONLY,
         audio_receiver_size=1024,
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.xten.com:3478"]}]},
         media_stream_constraints={"video": False, "audio": True},
     )
 
