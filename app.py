@@ -59,15 +59,15 @@ N_FFT = 1024
 RESAMPLE_RATE = 16000
 PLOT_LENGTH = 1000
 
-def get_fig(pitch, spec, min_value, max_value):
+def get_fig(pitch, spec, min_freq, max_freq):
     fig = plt.figure()
     ax = fig.add_subplot()
     aximg = ax.imshow(
-            cv2.resize(spec[0:int(max_value*(N_FFT//2 + 1)/(RESAMPLE_RATE//2)),:],
-            dsize=(PLOT_LENGTH, max_value)),
+            cv2.resize(spec[0:int(max_freq*(N_FFT//2 + 1)/(RESAMPLE_RATE//2)),:],
+            dsize=(PLOT_LENGTH, max_freq)),
             vmin=0, vmax=100,
         )
-    ax.set_ylim(min_value, max_value)
+    ax.set_ylim(min_freq, max_freq)
     ax.plot(pitch)
     divider = mpl_toolkits.axes_grid1.make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.1)
@@ -79,7 +79,7 @@ status_indicator = st.empty()
 option = st.selectbox(
     'Select a Pitch Extraction Model',
      ('torchcrepe', 'librosa.pyin'))
-values = st.slider('Select a range of values',  min_value=0, max_value=1000, step=1, value=(0,600))
+values = st.slider('Select a range of frequency',  min_value=0, max_value=1000, step=1, value=(0,600))
 
 if "pitch" not in st.session_state:
     st.session_state.pitch = np.zeros(PLOT_LENGTH)
@@ -163,13 +163,13 @@ while True:
                     audio_frame.sample_rate,
                     RESAMPLE_RATE,
                 ).to(device)
-        spec_tmp = spectrogram(resampler(audio)).cpu().detach().numpy()[0]
-        spec_tmp = cv2.resize(spec_tmp, dsize=(pitch_tmp.shape[0], N_FFT//2 + 1))
-        spec = np.append(spec,spec_tmp,axis=1)[:,-PLOT_LENGTH:]
-        
-        fig = get_fig(pitch, spec, values[0], values[1])
-        pitch_indicator.pyplot(fig)
-
+        if audio.size()[1]>N_FFT//2*3:
+            spec_tmp = spectrogram(resampler(audio)).cpu().detach().numpy()[0]
+            spec_tmp = cv2.resize(spec_tmp, dsize=(pitch_tmp.shape[0], N_FFT//2 + 1))
+            spec = np.append(spec,spec_tmp,axis=1)[:,-PLOT_LENGTH:]
+            
+            fig = get_fig(pitch, spec, values[0], values[1])
+            pitch_indicator.pyplot(fig)
         st.session_state.pitch = pitch
         st.session_state.spec = spec
         st.session_state.fig = fig
