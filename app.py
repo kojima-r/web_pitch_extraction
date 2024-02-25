@@ -59,6 +59,21 @@ N_FFT = 1024
 RESAMPLE_RATE = 16000
 PLOT_LENGTH = 1000
 
+def get_fig(pitch, spec, min_value, max_value):
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    aximg = ax.imshow(
+            cv2.resize(spec[0:int(max_value*(N_FFT//2 + 1)/(RESAMPLE_RATE//2)),:],
+            dsize=(PLOT_LENGTH, max_value)),
+            vmin=0, vmax=100,
+        )
+    ax.set_ylim(min_value, max_value)
+    ax.plot(pitch)
+    divider = mpl_toolkits.axes_grid1.make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+    fig.colorbar(aximg, cax=cax)
+    return fig
+
 status_indicator = st.empty()
 
 option = st.selectbox(
@@ -66,16 +81,16 @@ option = st.selectbox(
      ('torchcrepe', 'librosa.pyin'))
 values = st.slider('Select a range of values',  min_value=0, max_value=1000, step=1, value=(0,600))
 
-if "fig" not in st.session_state:
-    st.session_state.fig = plt.figure()
-fig = st.session_state.fig
-pitch_indicator = st.pyplot(fig)
 if "pitch" not in st.session_state:
     st.session_state.pitch = np.zeros(PLOT_LENGTH)
 pitch = st.session_state.pitch
 if "spec" not in st.session_state:
     st.session_state.spec = np.zeros((N_FFT//2 + 1,PLOT_LENGTH))
 spec = st.session_state.spec
+if "fig" not in st.session_state:
+    st.session_state.fig = get_fig(pitch, spec, values[0], values[1])
+fig = st.session_state.fig
+pitch_indicator = st.pyplot(fig)
 
 pitch_csv = st.download_button(
     "Download pitch as CSV",
@@ -152,23 +167,12 @@ while True:
         spec_tmp = cv2.resize(spec_tmp, dsize=(pitch_tmp.shape[0], N_FFT//2 + 1))
         spec = np.append(spec,spec_tmp,axis=1)[:,-PLOT_LENGTH:]
         
-        fig = plt.figure()
-        ax = fig.add_subplot()
-        aximg = ax.imshow(
-                cv2.resize(spec[0:int(values[1]*(N_FFT//2 + 1)/(RESAMPLE_RATE//2)),:],
-                dsize=(PLOT_LENGTH, values[1])),
-                vmin=0, vmax=100,
-            )
-        ax.set_ylim(values[0], values[1])
-        ax.plot(pitch)
-        divider = mpl_toolkits.axes_grid1.make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.1)
-        fig.colorbar(aximg, cax=cax)
+        fig = get_fig(pitch, spec, values[0], values[1])
         pitch_indicator.pyplot(fig)
 
         st.session_state.pitch = pitch
         st.session_state.spec = spec
-        st.session_state.fig = fig    
+        st.session_state.fig = fig
     else:
         status_indicator.write("AudioReciver is not set. Abort.")
         break
